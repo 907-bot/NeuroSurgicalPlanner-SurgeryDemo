@@ -21,12 +21,9 @@ import uvicorn
 import time
 import json
 
-from ..pipeline import BrainSurgicalPlannerPipeline, PipelineConfig
 from ..causal.scm import BrainTumorSCM
 from ..causal.do_calculus import DoCalculusEngine, SurgicalAction
 from ..causal.counterfactual import CounterfactualEngine, CounterfactualQuery
-from ..simulation.snn_physiology import IntraoperativeMonitor, PHYSIO_CHANNELS
-from ..graph.knowledge_graph import AnatomicalKnowledgeGraph
 from ..database.operations import PatientDB
 
 
@@ -53,13 +50,14 @@ _assets_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
 # Global pipeline instance (lazy init)
-_pipeline: Optional[BrainSurgicalPlannerPipeline] = None
+_pipeline: Optional[Any] = None
 _jobs: Dict[str, Dict] = {}
 
 
-def get_pipeline(patient_id: str = "API_PATIENT") -> BrainSurgicalPlannerPipeline:
+def get_pipeline(patient_id: str = "API_PATIENT") -> Any:
     global _pipeline
     if _pipeline is None:
+        from ..pipeline import BrainSurgicalPlannerPipeline, PipelineConfig
         _pipeline = BrainSurgicalPlannerPipeline(
             PipelineConfig(patient_id=patient_id, n_simulations=100)
         )
@@ -506,6 +504,7 @@ async def run_pipeline_upload(
     async def _run():
         _jobs[job_id]["status"] = "running"
         try:
+            from ..pipeline import BrainSurgicalPlannerPipeline, PipelineConfig
             cfg = PipelineConfig(patient_id=patient_id, n_simulations=n_simulations)
             pipeline = BrainSurgicalPlannerPipeline(cfg)
             result = pipeline.run(paths)
@@ -530,12 +529,13 @@ async def get_job(job_id: str):
 
 
 # ─── Simulation Endpoints ─────────────────────────────────────────────────────
-_monitor: Optional[IntraoperativeMonitor] = None
+_monitor: Optional[Any] = None
 
 
-def get_monitor() -> IntraoperativeMonitor:
+def get_monitor() -> Any:
     global _monitor
     if _monitor is None:
+        from ..simulation.snn_physiology import IntraoperativeMonitor
         _monitor = IntraoperativeMonitor()
     return _monitor
 
@@ -543,6 +543,7 @@ def get_monitor() -> IntraoperativeMonitor:
 @app.get("/simulation/channels")
 async def simulation_channels():
     """List available physiology monitoring channels."""
+    from ..simulation.snn_physiology import PHYSIO_CHANNELS
     return {
         "channels": PHYSIO_CHANNELS,
         "n_channels": len(PHYSIO_CHANNELS),
@@ -564,6 +565,7 @@ async def simulation_simulate(
     tumor_removal_at_ms: Optional[int] = 5000,
 ):
     """Run a full surgery simulation and return the physiology timeline."""
+    from ..simulation.snn_physiology import IntraoperativeMonitor
     monitor = IntraoperativeMonitor()
     states = monitor.simulate_surgery(
         duration_ms=duration_ms,
@@ -583,12 +585,13 @@ async def simulation_simulate(
 
 
 # ─── Knowledge Graph Endpoints ────────────────────────────────────────────────
-_kg: Optional[AnatomicalKnowledgeGraph] = None
+_kg: Optional[Any] = None
 
 
-def get_kg() -> AnatomicalKnowledgeGraph:
+def get_kg() -> Any:
     global _kg
     if _kg is None:
+        from ..graph.knowledge_graph import AnatomicalKnowledgeGraph
         _kg = AnatomicalKnowledgeGraph()
         _kg.populate()
     return _kg
@@ -1109,6 +1112,7 @@ async def run_pipeline(
     async def _run():
         _jobs[job_id]["status"] = "running"
         try:
+            from ..pipeline import BrainSurgicalPlannerPipeline, PipelineConfig
             cfg = PipelineConfig(
                 patient_id=req.patient_id,
                 n_simulations=req.n_simulations,

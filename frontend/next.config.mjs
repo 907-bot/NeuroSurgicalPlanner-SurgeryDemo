@@ -6,7 +6,10 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+    let backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+    if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
+      backendUrl = `http://${backendUrl}`;
+    }
     return [
       {
         source: '/assets/:path*',
