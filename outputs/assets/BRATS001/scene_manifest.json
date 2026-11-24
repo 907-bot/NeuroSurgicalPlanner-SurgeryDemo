@@ -1,0 +1,85 @@
+{
+  "scene_id": "scene_BRATS001",
+  "study_id": "BRATS001",
+  "coordinate_system": "RAS",
+  "units": "mm",
+  "structures": [
+    {
+      "id": "brain_surface",
+      "name": "Cerebral Cortex (Brain Surface)",
+      "type": "cortex",
+      "color": "#818cf8",
+      "opacity": 0.25,
+      "volumeCm3": 1405.88,
+      "centroid_mm": [
+        -0.0,
+        -0.0,
+        0.0
+      ],
+      "asset_url": "/assets/BRATS001/brain_surface.glb",
+      "vertex_count": 121658,
+      "face_count": 243248,
+      "description": "Patient-specific cortical surface extracted from T1 MRI."
+    },
+    {
+      "id": "necrotic_core",
+      "name": "Necrotic Tumor Core",
+      "type": "tumor",
+      "color": "#991b1b",
+      "opacity": 0.95,
+      "volumeCm3": 11.74,
+      "centroid_mm": [
+        19.4,
+        -43.0,
+        -7.2
+      ],
+      "asset_url": "/assets/BRATS001/necrotic_core.glb",
+      "vertex_count": 7526,
+      "face_count": 15048,
+      "description": "Non-enhancing necrotic tumor core."
+    },
+    {
+      "id": "peritumoral_edema",
+      "name": "Peritumoral Edema",
+      "type": "edema",
+      "color": "#fbbf24",
+      "opacity": 0.45,
+      "volumeCm3": 12.84,
+      "centroid_mm": [
+        17.9,
+        -55.8,
+        0.2
+      ],
+      "asset_url": "/assets/BRATS001/peritumoral_edema.glb",
+      "vertex_count": 8101,
+      "face_count": 16190,
+      "description": "Vasogenic edema infiltrating adjacent parenchyma."
+    },
+    {
+      "id": "enhancing_tumor",
+      "name": "Enhancing Tumor (ET)",
+      "type": "tumor",
+      "color": "#ef4444",
+      "opacity": 0.9,
+      "volumeCm3": 32.73,
+      "centroid_mm": [
+        19.6,
+        -41.0,
+        -7.7
+      ],
+      "asset_url": "/assets/BRATS001/enhancing_tumor.glb",
+      "vertex_count": 18248,
+      "face_count": 36488,
+      "description": "Hypervascular actively proliferating tumor region."
+    }
+  ],
+  "provenance": {
+    "segmentation_model": "BraTS2024-GroundTruth",
+    "reconstruction_pipeline": "marching_cubes_v1.0",
+    "voxel_spacing": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  }
+}

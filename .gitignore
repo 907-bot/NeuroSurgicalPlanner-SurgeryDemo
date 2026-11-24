@@ -17,7 +17,9 @@ env/
 # Data (large files)
 data/raw/
 data/processed/
-outputs/
+outputs/*
+!outputs/assets/
+outputs/assets/**/*.obj
 models/*.pt
 models/*.pth
 models/*.ckpt

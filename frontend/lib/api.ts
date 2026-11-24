@@ -5,9 +5,28 @@
 
 import { SceneManifest, SurgicalPlanOption } from '../types/anatomy';
 
+export const getApiBaseUrl = (): string => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return '';
+    }
+    return 'https://neurosurgicalplanner-surgerydemo.onrender.com';
+  }
+  return 'https://neurosurgicalplanner-surgerydemo.onrender.com';
+};
+
+export const apiUrl = (endpoint: string): string => {
+  const base = getApiBaseUrl();
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${base}${path}`;
+};
+
 export async function fetchStudies(): Promise<Array<{ study_id: string; name: string }>> {
   try {
-    const res = await fetch('/api/v1/studies');
+    const res = await fetch(apiUrl('/api/v1/studies'));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return data.studies || [];
@@ -24,7 +43,7 @@ export async function fetchStudies(): Promise<Array<{ study_id: string; name: st
 
 export async function fetchStudyScene(studyId: string): Promise<SceneManifest | null> {
   try {
-    const res = await fetch(`/api/v1/studies/${studyId}/scene`);
+    const res = await fetch(apiUrl(`/api/v1/studies/${studyId}/scene`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -35,7 +54,7 @@ export async function fetchStudyScene(studyId: string): Promise<SceneManifest | 
 
 export async function postIntervention(action: string, tumorSize = 0.3): Promise<any> {
   try {
-    const res = await fetch('/api/v1/intervene', {
+    const res = await fetch(apiUrl('/api/v1/intervene'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -61,7 +80,7 @@ export async function postIntervention(action: string, tumorSize = 0.3): Promise
 
 export async function fetchGNNRisk(studyId: string): Promise<any> {
   try {
-    const res = await fetch(`/api/v1/studies/${studyId}/gnn`);
+    const res = await fetch(apiUrl(`/api/v1/studies/${studyId}/gnn`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -72,7 +91,7 @@ export async function fetchGNNRisk(studyId: string): Promise<any> {
 
 export async function runMultiAgentDeliberation(studyId: string, nSimulations = 50): Promise<any> {
   try {
-    const res = await fetch(`/api/v1/studies/${studyId}/deliberate`, {
+    const res = await fetch(apiUrl(`/api/v1/studies/${studyId}/deliberate`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ n_simulations: nSimulations }),
@@ -88,7 +107,7 @@ export async function runMultiAgentDeliberation(studyId: string, nSimulations = 
 export async function fetchPhysiologyStream(scenario = 'baseline', duration = 20, resectionPercent = 0.0): Promise<any> {
   try {
     const res = await fetch(
-      `/api/v1/physiology/stream?scenario=${scenario}&duration_sec=${duration}&resection_percent=${resectionPercent}`
+      apiUrl(`/api/v1/physiology/stream?scenario=${scenario}&duration_sec=${duration}&resection_percent=${resectionPercent}`)
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
@@ -100,7 +119,7 @@ export async function fetchPhysiologyStream(scenario = 'baseline', duration = 20
 
 export async function fetchNeedlePhysics(depthMm: number): Promise<any> {
   try {
-    const res = await fetch(`/api/v1/physics/needle-insertion?depth_mm=${depthMm}`);
+    const res = await fetch(apiUrl(`/api/v1/physics/needle-insertion?depth_mm=${depthMm}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -111,7 +130,7 @@ export async function fetchNeedlePhysics(depthMm: number): Promise<any> {
 
 export async function fetchSOFAScene(studyId: string): Promise<any> {
   try {
-    const res = await fetch(`/api/v1/physics/sofa-scene/${studyId}`);
+    const res = await fetch(apiUrl(`/api/v1/physics/sofa-scene/${studyId}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -122,7 +141,7 @@ export async function fetchSOFAScene(studyId: string): Promise<any> {
 
 export async function fetchPhysicsBenchmarks(): Promise<any> {
   try {
-    const res = await fetch('/api/v1/physics/benchmarks');
+    const res = await fetch(apiUrl('/api/v1/physics/benchmarks'));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -133,7 +152,7 @@ export async function fetchPhysicsBenchmarks(): Promise<any> {
 
 export async function fetchValidationReport(studyId = 'BRATS001'): Promise<any> {
   try {
-    const res = await fetch(`/api/v1/validation/metrics?study_id=${studyId}`);
+    const res = await fetch(apiUrl(`/api/v1/validation/metrics?study_id=${studyId}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -142,10 +161,9 @@ export async function fetchValidationReport(studyId = 'BRATS001'): Promise<any> 
   }
 }
 
-
 export async function searchSurgicalPlans(topK = 3): Promise<SurgicalPlanOption[]> {
   try {
-    const res = await fetch('/api/v1/simulations/plans', {
+    const res = await fetch(apiUrl('/api/v1/simulations/plans'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

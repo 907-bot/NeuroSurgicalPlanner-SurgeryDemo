@@ -6,6 +6,7 @@ import { OrbitControls, Html, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { useBrainStore } from '../../stores/useBrainStore';
 import { AnatomicalStructure } from '../../types/anatomy';
+import { getApiBaseUrl } from '../../lib/api';
 
 // Helper to merge buffer geometries for bilateral brain structures
 function mergeBufferGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry {
@@ -387,7 +388,12 @@ const ProceduralStructure: React.FC<StructureMeshProps> = ({ structure, isSelect
 // Real Patient MRI 3D Digital Twin (GLTF/GLB Asset Renderer)
 const GLTFStructure: React.FC<StructureMeshProps & { url: string }> = ({ structure, isSelected, onSelect, url }) => {
   const { showRiskHeatmap } = useBrainStore();
-  const { scene } = useGLTF(url);
+  const resolvedUrl = useMemo(() => {
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const base = getApiBaseUrl();
+    return `${base}${url.startsWith('/') ? url : `/${url}`}`;
+  }, [url]);
+  const { scene } = useGLTF(resolvedUrl);
   const groupRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
 
