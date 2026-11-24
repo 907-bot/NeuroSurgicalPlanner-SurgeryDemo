@@ -1,4 +1,4 @@
-.PHONY: install test lint format dashboard api docker-up docker-down demo clean
+.PHONY: install test lint format dashboard api docker-up docker-down demo clean reproduce figures validate
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 install:
@@ -45,6 +45,35 @@ train-gnn:
 		--epochs 100 \
 		--batch-size 8 \
 		--output models/gnn_checkpoint.pt
+
+train-monai:
+	python scripts/train_monai_local.py --data-dir data/adapted --epochs 15 --output models/monai_brats_best.pt
+
+train-snn:
+	python scripts/train_snn.py --epochs 10 --output models/snn_physiology_best.pt
+
+# ─── Frontend (NeuroVerse 3D Workstation) ─────────────────────────────────────
+frontend-install:
+	cd frontend && npm install
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-build:
+	cd frontend && npm run build
+
+# ─── Reproducibility & Publication (Sprints 07 & 08) ─────────────────────────
+reproduce:
+	python scripts/reproduce_all.py
+
+figures:
+	python scripts/generate_figures.py
+
+validate:
+	pytest tests/test_validation.py -v
+
+report:
+	python scripts/generate_scientific_report.py
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 docker-up:

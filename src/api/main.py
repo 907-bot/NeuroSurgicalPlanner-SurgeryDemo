@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, BackgroundTasks, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
@@ -45,6 +46,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static asset directory for reconstructed 3D digital twins
+_assets_dir = Path("outputs/assets")
+_assets_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
 # Global pipeline instance (lazy init)
 _pipeline: Optional[BrainSurgicalPlannerPipeline] = None
@@ -147,8 +153,205 @@ class SurgicalPlanCreateRequest(BaseModel):
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/health")
+@app.get("/api/v1/health")
 async def health():
-    return {"status": "ok", "service": "brain-surgical-planner"}
+    return {"status": "ok", "service": "brain-surgical-planner", "platform": "NEUROVERSE-AI"}
+
+
+@app.get("/api/v1/studies", tags=["Digital Twin"])
+def list_studies() -> Dict[str, Any]:
+    """List available reconstructed patient studies."""
+    studies = []
+    assets_path = Path("outputs/assets")
+    if assets_path.exists():
+        for pdir in sorted(assets_path.iterdir()):
+            manifest_file = pdir / "scene_manifest.json"
+            if pdir.is_dir() and manifest_file.exists():
+                try:
+                    with open(manifest_file) as f:
+                        manifest = json.load(f)
+                    studies.append({
+                        "study_id": pdir.name,
+                        "name": f"BraTS Patient {pdir.name}",
+                        "structure_count": len(manifest.get("structures", [])),
+                        "coordinate_system": manifest.get("coordinate_system", "RAS"),
+                    })
+                except Exception:
+                    pass
+    return {"studies": studies}
+
+
+@app.get("/api/v1/studies/{study_id}/scene", tags=["Digital Twin"])
+def get_study_scene(study_id: str) -> Dict[str, Any]:
+    """Get the dynamic 3D scene manifest for a given patient study."""
+    manifest_file = Path("outputs/assets") / study_id / "scene_manifest.json"
+    if not manifest_file.exists():
+        raise HTTPException(status_code=404, detail=f"Scene manifest not found for study: {study_id}")
+    with open(manifest_file) as f:
+        return json.load(f)
+
+
+class BiomechanicalSimulationRequest(BaseModel):
+    study_id: str = "BRATS001"
+    initial_tumor_volume_cm3: float = Field(35.0, ge=0.1, le=200.0)
+    resection_percent: float = Field(50.0, ge=0.0, le=100.0)
+    baseline_icp: float = Field(22.0, ge=5.0, le=50.0)
+    entry_point_mm: Optional[List[float]] = None
+    tumor_centroid_mm: Optional[List[float]] = None
+
+
+@app.post("/api/v1/simulations/deform", tags=["Simulation"])
+def simulate_biomechanical_deformation(req: BiomechanicalSimulationRequest) -> Dict[str, Any]:
+    """Simulate intraoperative brain shift, tissue deformation, and Monro-Kellie elastance."""
+    from ..simulation.biomechanics import BrainShiftFEMSimulator
+    sim = BrainShiftFEMSimulator()
+    centroid = tuple(req.tumor_centroid_mm) if req.tumor_centroid_mm and len(req.tumor_centroid_mm) == 3 else (18.0, -42.0, -5.0)
+    entry = tuple(req.entry_point_mm) if req.entry_point_mm and len(req.entry_point_mm) == 3 else (45.0, 15.0, 20.0)
+
+    outcome = sim.simulate_resection_dynamics(
+        study_id=req.study_id,
+        initial_tumor_volume_cm3=req.initial_tumor_volume_cm3,
+        resection_percent=req.resection_percent,
+        tumor_centroid_mm=centroid,
+        entry_point_mm=entry,
+        baseline_icp=req.baseline_icp,
+    )
+    return outcome.to_dict()
+
+
+@app.get("/api/v1/simulations/tissues", tags=["Simulation"])
+def get_tissue_properties() -> Dict[str, Any]:
+    """Get constitutive mechanical properties for cranial tissues."""
+    from ..simulation.biomechanics import TISSUE_LIBRARY
+    return {
+        key: {
+            "name": t.name,
+            "youngs_modulus_kpa": t.youngs_modulus_kpa,
+            "poissons_ratio": t.poissons_ratio,
+            "shear_modulus_kpa": round(t.shear_modulus_kpa, 2),
+            "bulk_modulus_kpa": round(t.bulk_modulus_kpa, 2),
+            "density_g_cm3": t.density_g_cm3,
+        }
+        for key, t in TISSUE_LIBRARY.items()
+    }
+
+
+@app.get("/api/v1/studies/{study_id}/gnn", tags=["Intelligence"])
+def get_study_gnn_risk(study_id: str) -> Dict[str, Any]:
+    """Execute Anatomical GNN inference on patient study graph."""
+    from ..graph.gnn_service import AnatomicalGNNService
+    service = AnatomicalGNNService()
+    try:
+        return service.predict_for_study(study_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Study not found: {study_id}")
+    except Exception as e:
+        logger.error(f"GNN inference error for {study_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeliberationRequest(BaseModel):
+    n_simulations: int = Field(60, ge=10, le=500)
+
+
+@app.post("/api/v1/studies/{study_id}/deliberate", tags=["Intelligence"])
+def run_multi_agent_deliberation(study_id: str, req: DeliberationRequest = DeliberationRequest()) -> Dict[str, Any]:
+    """Execute multi-agent surgical planning consensus panel."""
+    from ..agents.consultation_service import MultiAgentConsultationService
+    service = MultiAgentConsultationService()
+    try:
+        return service.deliberate(study_id, n_simulations=req.n_simulations)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Study not found: {study_id}")
+    except Exception as e:
+        logger.error(f"Multi-agent deliberation error for {study_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/physiology/stream", tags=["Physiology"])
+def get_physiology_stream(
+    scenario: str = "baseline",
+    duration_sec: int = 30,
+    resection_percent: float = 0.0,
+) -> Dict[str, Any]:
+    """Stream synchronized multi-channel vital signs and SNN spike raster."""
+    from ..simulation.physiology_service import PhysiologyService
+    service = PhysiologyService()
+    try:
+        return service.generate_scenario_stream(
+            scenario=scenario,
+            duration_sec=duration_sec,
+            resection_percent=resection_percent,
+        )
+    except Exception as e:
+        logger.error(f"Physiology stream error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/physics/needle-insertion", tags=["Physics"])
+def get_needle_insertion_physics(
+    depth_mm: float = 25.0,
+    tissue_type: str = "cortex",
+) -> Dict[str, Any]:
+    """Calculate 3-phase stereotactic needle insertion force profile."""
+    from ..simulation.sofa_physics import SOFAPhysicsEngine
+    engine = SOFAPhysicsEngine()
+    try:
+        profile = engine.simulate_needle_insertion(target_depth_mm=depth_mm, tissue_type=tissue_type)
+        return profile.to_dict()
+    except Exception as e:
+        logger.error(f"Needle physics error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/physics/sofa-scene/{study_id}", tags=["Physics"])
+def get_sofa_scene(study_id: str) -> Dict[str, Any]:
+    """Export SOFA simulation scene graph for patient digital twin."""
+    from ..simulation.sofa_physics import SOFAPhysicsEngine
+    engine = SOFAPhysicsEngine()
+    try:
+        return engine.generate_sofa_scene_graph(study_id)
+    except Exception as e:
+        logger.error(f"SOFA scene error for {study_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/physics/benchmarks", tags=["Physics"])
+def get_physics_benchmarks() -> Dict[str, Any]:
+    """Get neurosurgical bench test validation comparison against Miller & Chinzei data."""
+    from ..simulation.sofa_physics import SOFAPhysicsEngine
+    engine = SOFAPhysicsEngine()
+    try:
+        return engine.get_benchmark_comparison()
+    except Exception as e:
+        logger.error(f"Physics benchmark error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/validation/metrics", tags=["Scientific Validation"])
+def get_validation_metrics(study_id: str = "BRATS001") -> Dict[str, Any]:
+    """Retrieve complete scientific validation suite report across segmentation, GNN, causal, and physics."""
+    from ..evaluation.validation_suite import get_validation_suite
+    suite = get_validation_suite()
+    try:
+        return suite.run_full_suite(study_id=study_id)
+    except Exception as e:
+        logger.error(f"Validation metrics error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/validation/ablation", tags=["Scientific Validation"])
+def run_ablation_study() -> Dict[str, Any]:
+    """Execute component ablation experiments across model architecture."""
+    from ..evaluation.validation_suite import get_validation_suite
+    suite = get_validation_suite()
+    try:
+        return suite.run_ablation_experiments()
+    except Exception as e:
+        logger.error(f"Ablation study error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 @app.get("/actions")
@@ -187,12 +390,22 @@ async def scm_variables(params: SCMParams = None):
 
 
 @app.post("/intervene")
+@app.post("/api/v1/intervene")
 async def intervene(req: InterventionRequest):
     """Apply a do() intervention and return downstream causal effects."""
-    try:
-        action = SurgicalAction(req.action)
-    except ValueError:
-        raise HTTPException(400, f"Unknown action: {req.action}. See GET /actions")
+    action_key = req.action.lower()
+    ACTION_ALIASES = {
+        "resect_tumor": SurgicalAction.REMOVE_TUMOR_FULL,
+        "resection": SurgicalAction.REMOVE_TUMOR_FULL,
+        "icp_drain": SurgicalAction.DRAIN_CSF,
+    }
+    if action_key in ACTION_ALIASES:
+        action = ACTION_ALIASES[action_key]
+    else:
+        try:
+            action = SurgicalAction(req.action)
+        except ValueError:
+            raise HTTPException(400, f"Unknown action: {req.action}. See GET /actions")
 
     scm = BrainTumorSCM(patient_params=req.patient_params.model_dump())
     engine = DoCalculusEngine(scm)
@@ -213,6 +426,7 @@ async def intervene(req: InterventionRequest):
 
 
 @app.post("/counterfactual")
+@app.post("/api/v1/counterfactual")
 async def counterfactual(req: CounterfactualRequest):
     """Answer: what would have happened if we had done X instead?"""
     try:
@@ -251,6 +465,7 @@ async def counterfactual(req: CounterfactualRequest):
 
 
 @app.post("/search/plans")
+@app.post("/api/v1/simulations/plans")
 async def search_plans(req: PlanSearchRequest):
     """Run Monte-Carlo counterfactual search over all surgical plans."""
     scm = BrainTumorSCM(patient_params=req.patient_params.model_dump())

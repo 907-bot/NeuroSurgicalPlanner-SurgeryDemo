@@ -187,5 +187,158 @@ def test_get_patient():
     assert data["patient_id"] == "TEST002"
 
 
+def test_list_studies():
+    """Test NeuroVerse API v1 list studies endpoint."""
+    response = client.get("/api/v1/studies")
+    assert response.status_code == 200
+    data = response.json()
+    assert "studies" in data
+    assert len(data["studies"]) >= 4
+    study_ids = [s["study_id"] for s in data["studies"]]
+    assert "BRATS001" in study_ids
+
+
+def test_get_study_scene():
+    """Test NeuroVerse API v1 scene manifest endpoint for BRATS001."""
+    response = client.get("/api/v1/studies/BRATS001/scene")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["study_id"] == "BRATS001"
+    assert data["coordinate_system"] == "RAS"
+    assert len(data["structures"]) >= 4
+    struct_ids = [s["id"] for s in data["structures"]]
+    assert "brain_surface" in struct_ids
+    assert "enhancing_tumor" in struct_ids
+
+
+def test_simulate_biomechanical_deformation():
+    """Test biomechanical tissue deformation simulation endpoint."""
+    response = client.post(
+        "/api/v1/simulations/deform",
+        json={
+            "study_id": "BRATS001",
+            "initial_tumor_volume_cm3": 38.6,
+            "resection_percent": 80.0,
+            "baseline_icp": 22.0,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["study_id"] == "BRATS001"
+    assert data["resection_percent"] == 80.0
+    assert data["resected_volume_cm3"] > 0
+    assert data["post_op_icp_mmhg"] < 22.0
+    assert data["expected_recovery_score"] > 0.7
+    assert data["brain_shift_max_mm"] > 0
+
+
+def test_get_tissue_properties():
+    """Test tissue properties endpoint."""
+    response = client.get("/api/v1/simulations/tissues")
+    assert response.status_code == 200
+    data = response.json()
+    assert "cortex" in data
+    assert "tumor" in data
+    assert data["cortex"]["youngs_modulus_kpa"] > 0
+
+
+def test_get_study_gnn_risk():
+    """Test Anatomical GNN risk inference endpoint."""
+    response = client.get("/api/v1/studies/BRATS001/gnn")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["study_id"] == "BRATS001"
+    assert "node_risks" in data
+    assert "recovery_score" in data
+    assert "graph_edges" in data
+    assert len(data["node_risks"]) >= 4
+
+
+def test_run_multi_agent_deliberation():
+    """Test Multi-Agent deliberative consultation endpoint."""
+    response = client.post(
+        "/api/v1/studies/BRATS001/deliberate",
+        json={"n_simulations": 25},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["study_id"] == "BRATS001"
+    assert "deliberations" in data
+    assert len(data["deliberations"]) == 5
+    agent_ids = [d["agent_id"] for d in data["deliberations"]]
+    assert "anatomy_agent" in agent_ids
+    assert "risk_agent" in agent_ids
+    assert "causal_agent" in agent_ids
+    assert "planner_agent" in agent_ids
+    assert "report_agent" in agent_ids
+    assert "full_surgical_report" in data
+    assert len(data["full_surgical_report"]) > 100
+
+
+def test_get_physiology_stream():
+    """Test SNN vital signs & hemodynamics stream endpoint."""
+    response = client.get("/api/v1/physiology/stream?scenario=baseline&duration_sec=10")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["scenario"] == "baseline"
+    assert "current_vitals" in data
+    assert "hemodynamics" in data
+    assert "spike_raster" in data
+    assert len(data["timeline"]) == 10
+    assert "cerebral_perfusion_pressure" in data["hemodynamics"]
+
+
+def test_needle_insertion_physics():
+    """Test needle puncture physics endpoint."""
+    response = client.get("/api/v1/physics/needle-insertion?depth_mm=20.0")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["depth_mm"] == 20.0
+    assert "insertion_force_n" in data
+    assert "phase" in data
+    assert len(data["force_curve"]) >= 20
+
+
+def test_get_sofa_scene():
+    """Test SOFA scene graph generation endpoint."""
+    response = client.get("/api/v1/physics/sofa-scene/BRATS001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["format"] == "SOFA_SCENE_GRAPH_V2"
+    assert "root_node" in data
+
+
+def test_get_physics_benchmarks():
+    """Test physics benchmarks endpoint."""
+    response = client.get("/api/v1/physics/benchmarks")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "VALIDATED"
+    assert data["correlation_r2"] > 0.95
+
+
+def test_get_validation_metrics():
+    """Test scientific validation suite endpoint."""
+    response = client.get("/api/v1/validation/metrics?study_id=BRATS001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["overall_status"] == "SCIENTIFICALLY_VALIDATED"
+    assert "segmentation" in data
+    assert "gnn_calibration" in data
+    assert "causal_sensitivity" in data
+    assert "ablation_study" in data
+    assert data["segmentation"]["mean_dice_score"] >= 0.85
+
+
+def test_run_ablation_study():
+    """Test component ablation study endpoint."""
+    response = client.post("/api/v1/validation/ablation")
+    assert response.status_code == 200
+    data = response.json()
+    assert "configurations" in data
+    assert len(data["configurations"]) == 5
+    assert "optimal_configuration" in data
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

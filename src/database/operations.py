@@ -19,13 +19,23 @@ class PatientDB:
 
     def __init__(self, database_url: Optional[str] = None):
         if database_url is None:
-            database_url = os.getenv(
-                "DATABASE_URL",
-                "postgresql://postgres:surgical_planner_dev@postgres:5432/surgical_planner"
-            )
-        self.engine = create_engine(database_url, pool_pre_ping=True)
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        self._ensure_tables()
+            database_url = os.getenv("DATABASE_URL")
+        
+        if not database_url:
+            os.makedirs("outputs", exist_ok=True)
+            database_url = "sqlite:///./outputs/surgical_planner.db"
+
+        try:
+            connect_args = {"check_same_thread": False} if "sqlite" in database_url else {}
+            self.engine = create_engine(database_url, pool_pre_ping=True, connect_args=connect_args)
+            self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+            self._ensure_tables()
+        except Exception as e:
+            logger.warning(f"Database connection to {database_url} failed ({e}). Falling back to SQLite.")
+            os.makedirs("outputs", exist_ok=True)
+            self.engine = create_engine("sqlite:///./outputs/surgical_planner.db", connect_args={"check_same_thread": False})
+            self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+            self._ensure_tables()
 
     def _ensure_tables(self):
         """Create tables if they don't exist."""

@@ -48,3 +48,10 @@ coverage.xml
 
 # Docker
 .docker/
+
+# Frontend & Cache
+.cache/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+

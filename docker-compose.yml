@@ -1,12 +1,31 @@
 services:
 
-  # ── API Server ─────────────────────────────────────────────────────────────
-  api:
+  # ── Next.js 14 3D Web Workstation (Frontend) ────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: neuroverse-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - neuroverse-net
+    restart: unless-stopped
+
+  # ── FastAPI Intelligence & Physics Engine (Backend) ─────────────────────────
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: neuroverse-backend
     ports:
-      - "8002:8000"
+      - "8000:8000"
     volumes:
       - ./src:/app/src
       - ./scripts:/app/scripts
@@ -17,72 +36,73 @@ services:
       - PYTHONPATH=/app
       - LOG_LEVEL=INFO
       - DATABASE_URL=postgresql://postgres:surgical_planner_dev@postgres:5432/surgical_planner
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=surgical_planner
     depends_on:
       - postgres
       - qdrant
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - neuroverse-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # ── Streamlit Dashboard ────────────────────────────────────────────────────
-  dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8502:8501"
-    volumes:
-      - ./src:/app/src
-      - ./scripts:/app/scripts
-      - ./data:/app/data
-      - ./outputs:/app/outputs
-    environment:
-      - PYTHONPATH=/app
-      - API_BASE=http://api:8000
-    depends_on:
-      - api
-    command: streamlit run scripts/dashboard.py --server.port 8501 --server.address 0.0.0.0
-    restart: unless-stopped
-
-  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  # ── PostgreSQL Database ─────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
+    container_name: neuroverse-postgres
     environment:
       POSTGRES_DB: surgical_planner
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: surgical_planner_dev
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - neuroverse-net
     restart: unless-stopped
 
-  # ── Qdrant Vector DB ───────────────────────────────────────────────────────
+  # ── Qdrant Vector DB ────────────────────────────────────────────────────────
   qdrant:
     image: qdrant/qdrant:latest
+    container_name: neuroverse-qdrant
     ports:
-      - "6335:6333"
-      - "6336:6334"
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - neuroverse-net
     restart: unless-stopped
 
-  # ── Neo4j Knowledge Graph ──────────────────────────────────────────────────
+  # ── Neo4j Anatomical Knowledge Graph ────────────────────────────────────────
   neo4j:
     image: neo4j:5-community
+    container_name: neuroverse-neo4j
     environment:
       NEO4J_AUTH: neo4j/surgical_planner
       NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
     ports:
-      - "7475:7474"
-      - "7688:7687"
+      - "7474:7474"
+      - "7687:7687"
     volumes:
       - neo4j_data:/data
+    networks:
+      - neuroverse-net
     restart: unless-stopped
+
+networks:
+  neuroverse-net:
+    driver: bridge
 
 volumes:
   postgres_data:

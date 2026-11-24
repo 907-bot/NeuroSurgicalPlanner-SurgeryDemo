@@ -24,7 +24,8 @@ Thumbs.db
 htmlcov/
 .coverage
 coverage.xml
-outputs/
+outputs/*
+!outputs/assets
 data/raw/
 data/processed/
 models/*.pt
