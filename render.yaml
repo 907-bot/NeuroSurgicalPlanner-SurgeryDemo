@@ -1,0 +1,30 @@
+services:
+  # ── FastAPI Backend Service ─────────────────────────────────────────────────
+  - type: web
+    name: neurosurgical-planner-api
+    runtime: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONPATH
+        value: /app
+      - key: LOG_LEVEL
+        value: INFO
+
+  # ── Next.js 14 Frontend Workstation ─────────────────────────────────────────
+  - type: web
+    name: neurosurgical-planner-web
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install --legacy-peer-deps && npm run build
+    startCommand: npm run start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: neurosurgical-planner-api
+          property: host
